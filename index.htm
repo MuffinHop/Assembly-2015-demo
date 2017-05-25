@@ -1,0 +1,517 @@
+<html>
+
+<head>
+    <title>Pantano Futura Demo</title>
+    <script src="jquery.js"></script>
+    <style>
+        #centteri {
+            z-index: 1000;
+            position:absolute;
+            font-size: 0.6em;
+        color: rgba(255,255,255,0.3);
+        padding: 1em;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-right: -50%;
+        transform: translate(-50%, -50%);
+    font-family: Arial, Helvetica, sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <video id="vidiu" width="800" height="600" style="position: absolute; top: 50%; left: 50%; margin-right: -50%; transform: translate(-50%, -50%); font-family: Arial, Helvetica, sans-serif; height:100%; width:100%; display:none;" control>
+    <source src="stokki.mp4" type="video/webm">
+    </video>
+
+    <div id="centteri"></div>
+    <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+    <script type="text/javascript" src="webgl-utils.js"></script>
+
+    <script id="superpostprocess" type="x-shader/x-fragment">
+        precision mediump float; varying float time; varying float c; void main(void) { gl_FragColor = vec4(1.); }
+    </script>
+    <script id="shader-fs" type="x-shader/x-fragment">
+        precision mediump float; varying float time; varying float c; void main(void) { gl_FragColor = vec4(1.-c/3.,c/2.+.8,c/3.,1.); }
+    </script>
+
+    <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition; attribute vec4 aVertexColor; uniform float iGlobalTime; uniform mat4 uMVMatrix; uniform mat4 uPMatrix; varying float time; varying float c; void main(void) { time = iGlobalTime; vec4 p = uPMatrix * uMVMatrix * vec4( aVertexPosition * vec3( sin(iGlobalTime*4.+aVertexPosition.y*4.)/3.+1., 1., sin(iGlobalTime*4.+aVertexPosition.y*4.)/3.+1.), 1.0); c = p.y; gl_Position = p; }
+    </script>
+
+    <script>
+    </script>
+    <script>
+                var curEffectSyncTime=0;
+        var doc = document,
+            style = document.body.style;
+        var txt = "<br>" +
+            "	<h1>ENCORE</h1>the royal elite ninjas inc is dead<br><br> " +
+            "	<input style=\"height:20%; width:33%; font-size:120%\" type=\"submit\" value=\"OLD GPU\" onclick=\"startDemo(0.4)\">" + "<input style=\"height:20%; width:33%; font-size:120%\" type=\"submit\" value=\"NEW GPU\" onclick=\"startDemo(0.7)\">" + "<input style=\"height:20%; width:33%; font-size:120%\" type=\"submit\" value=\"FUTURE GPU\" onclick=\"startDemo(1.1)\">" + "<br><input style=\"height:10%; width:99%; font-size:60%\" type=\"submit\" value=\"MUTE\" onclick=\"setMute()\">" + "<br><input style=\"height:10%; width:99%; font-size:60%\" type=\"submit\" value=\"FULLSCREEN\" onclick=\"toggleFullScreen()\">",
+            canvas = undefined,
+            gl = undefined,
+            startDiv = document.createElement("div"),
+            W = window,
+            bpm = 60,
+            currentEffect = -2,
+            audio = undefined,
+            demo = undefined,
+            extrasync = undefined,
+            offset = 0,
+            syncIndex = 0,
+            mute = false,
+            samplingRate = 2,
+            sceneTex = undefined,
+            sceneFB = undefined,
+            sceneRB = undefined,
+            loadedTextureIndex = 0;
+        textures = [],
+            lastCalledTime = undefined,
+            fps = undefined,
+            newEffectStartTime = 0,
+            serverVersion = false,
+            JSONloaded = false,
+            shadersToLoad = -1,
+            fullscreening = false,
+            vertexScene = false,
+            checkIfJSONloaded = setInterval(function () {
+                if (JSONloaded) {
+                    console.log("JSONloaded:" + JSONloaded);
+                    shadersToLoad = demo.fragmentShaders.length;
+                    console.log(shadersToLoad);
+                    loadShader(shadersToLoad - 1);
+                    JSONloaded = false;
+                }
+            }, 250),
+            checkIfShadersLoaded = setInterval(function () {
+                if (shadersToLoad == 0) {
+                    shadersToLoad--;
+                    loadAudio();
+                }
+            }, 250),
+            setMute = function () {
+                mute = !mute;
+                //alert("sound is now : "+!mute);
+            },
+            vertexShaderTxt = "" +
+            "attribute vec2 a;" +
+            "void main() {" +
+            "  gl_Position = vec4(a, 0., 1.);" +
+            "}",
+            dontFullscreen = function () {
+                fullscreening = false;
+                alert("windowed mode set");
+            },
+            toggleFullScreen = function () {
+                //if (fullscreening) return;
+                if ((document.fullScreenElement && document.fullScreenElement !== null) ||
+                    (!document.mozFullScreen && !document.webkitIsFullScreen)) {
+                    if (document.documentElement.requestFullScreen) {
+                        document.documentElement.requestFullScreen();
+                    } else if (document.documentElement.mozRequestFullScreen) {
+                        document.documentElement.mozRequestFullScreen();
+                    } else if (document.documentElement.webkitRequestFullScreen) {
+                        document.documentElement.webkitRequestFullScreen(Element.ALLOW_KEYBOARD_INPUT);
+                    }
+                } else {
+                    if (document.cancelFullScreen) {
+                        document.cancelFullScreen();
+                    } else if (document.mozCancelFullScreen) {
+                        document.mozCancelFullScreen();
+                    } else if (document.webkitCancelFullScreen) {
+                        document.webkitCancelFullScreen();
+                    }
+                }
+            },
+
+            fragmentShadersTxt = [],
+
+            postFragmentShaderTxt = "",
+
+            postProgram = [],
+            shaderPrograms = [],
+            tex = null,
+            fb = null,
+            A = function (nfo) {
+                console.log("DEMO ALERT : " + nfo);
+            },
+            compileAndAttachShader = function (src, type, program) {
+                var shader = gl.createShader(type);
+                gl.shaderSource(shader, src);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.log(gl.getShaderInfoLog(shader));
+                    return null;
+                }
+                gl.attachShader(program, shader);
+            },
+            initTexture = function () {
+                if (demo.textures.length == loadedTextureIndex) return;
+                console.log(demo.textures.length);
+                textures[loadedTextureIndex] = gl.createTexture();
+                var img = new Image();
+                img.onload = function () {
+                    handleTextureLoaded(img, textures[loadedTextureIndex]);
+                    loadedTextureIndex++;
+                    initTexture();
+                };
+                img.src = demo.textures[loadedTextureIndex];
+            },
+
+            handleTextureLoaded = function (image, texture) {
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                gl.generateMipmap(gl.TEXTURE_2D);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+            },
+            loadAudio = function (src) {
+                A("audio to be loaded");
+                if (typeof demo.bpm !== 'undefined')
+                    A(bpm = demo.bpm);
+                audio = new Audio('zuggerzogger.mp3');
+                audio.loop=false;
+                audio.oncanplaythrough = function () {
+                    startDiv.innerHTML += "*";
+                    audio.volume = !mute;
+                    audio.currentTime = 0;
+                    readyToDemo();
+                }
+            },
+            loadShader = function (shaderIndex) {
+                $.ajax({
+                    url: demo.fragmentShaders[shaderIndex],
+                    dataType: "text",
+                    success: function (data) {
+                        setTimeout(function () {
+                            startDiv.innerHTML += "*";
+                            if (shaderIndex != 0) {
+                                fragmentShadersTxt[shaderIndex] = data;
+                            } else {
+                                fragmentShadersTxt[shaderIndex] = data;
+                                postFragmentShaderTxt = data;
+                            }
+                            if (--shaderIndex >= 0)
+                                loadShader(shaderIndex);
+                            shadersToLoad--;
+                        }, 10);
+                    }
+                });
+                /*decrement once done loading one*/
+            },
+            loadJSON = function (src) {
+                $.getJSON("post.json", function (json) {
+                    console.log('postload');
+                    extrasync = json;
+                    $.getJSON("sync.json", function (json) {
+                        startDiv.innerHTML += "*";
+                        demo = json;
+                        JSONloaded = true;
+                        initTexture();
+                    });
+                });
+            },
+            updateJSON = function (src) {
+                $('#vidiu').show();
+                if(document.getElementById("vidiu") != undefined)
+                document.getElementById("vidiu").play(); 
+                $.getJSON("post.json", function (json) {
+                    extrasync = json;
+                    $.getJSON("sync.json", function (json) {
+                        demo = json;
+                    });
+                });
+            },
+            startDemo = function (sampling) {
+                /*																
+                	use only if using ruby compressor: 							
+                	var compressElement = doc.getElementById('c'); 				
+                	compressElement.parentNode.removeChild(compressElement); 	
+                */
+                //toggleFullScreen();
+                setTimeout(function () {
+                    samplingRate = sampling;
+                    startDiv.style.position = "absolute";
+                    startDiv.innerHTML = "";
+                    canvas.width = W.innerWidth,
+                    canvas.height = W.innerHeight;
+
+                    tex = gl.createTexture();
+                    fb = gl.createFramebuffer();
+                    document.body.style.cursor = "none";
+                    gl.viewport(0, 0, canvas.width, canvas.height);
+                    startDiv.innerHTML = "I wonder. <br><br><br>Loading : *";
+                    loadJSON();
+                }, 10);
+            },
+            currentRunningEffectIndex = -1
+        run = function () {
+                var shader = undefined;
+                var time = audio.currentTime * (bpm / 60.0) + offset;
+                var curBeat = Math.floor(time);
+                for (var i = 0; i < demo.sync.length; i++) { 
+                    if (demo.sync[i].beat == curBeat)
+                            curEffectSyncTime = demo.sync[i].beat;  
+                    if (demo.sync[i].beat == curBeat && i != syncIndex) {
+                        syncIndex = i;
+                        A("syncIndex has been set to:" + syncIndex);
+                        if (currentEffect !== demo.sync[syncIndex].param.effect) {
+                            newEffectStartTime = demo.sync[i].beat;
+                            currentEffect = demo.sync[syncIndex].param.effect;
+                        } else {
+                        }
+                        break;
+                    }
+                }
+                if (currentEffect != demo.sync[syncIndex].param.effect) {
+                    var curProgram = shaderPrograms[demo.sync[syncIndex].param.effect];
+                    gl.useProgram(curProgram);
+
+                    var positionLocation = gl.getAttribLocation(curProgram, "a");
+                    var vertBuffer = gl.createBuffer(),
+                        verts = [ 1, 1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1 ];
+                    gl.bindBuffer(gl.ARRAY_BUFFER, vertBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+                    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+                    gl.enableVertexAttribArray(positionLocation);
+                    currentEffect = demo.sync[syncIndex].param.effect;
+                    A("currentEffect has been set to:" + currentEffect);
+                }
+
+                //console.log(currentEffect);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, textures[demo.sync[syncIndex].texture_id[0]]);
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, textures[demo.sync[syncIndex].texture_id[1]]);
+                gl.activeTexture(gl.TEXTURE2);
+                gl.bindTexture(gl.TEXTURE_2D, textures[demo.sync[syncIndex].texture_id[2]]);
+                gl.activeTexture(gl.TEXTURE3);
+                var delta = (new Date().getTime() - lastCalledTime) / 1000;
+                lastCalledTime = Date.now();
+                fps = 1 / delta;
+
+                startDiv.innerHTML = "";//"beat:" + curBeat + " currentEffect:" + currentEffect + " fps:" + Math.floor(fps * 10) / 10;
+                shader = shaderPrograms[currentEffect];
+
+                gl.useProgram(shader);
+
+                gl.uniform1i(gl.getUniformLocation(shader, "mixerTex"), 0);
+                gl.uniform1i(gl.getUniformLocation(shader, "mixerTex2"), 1);
+                gl.uniform1i(gl.getUniformLocation(shader, "mixerTex3"), 2);
+                gl.uniform1f(gl.getUniformLocation(shader, "iGlobalTime"), time - newEffectStartTime);
+                gl.uniform1f(gl.getUniformLocation(shader, "iLocalTime"), time - curEffectSyncTime);
+                gl.uniform2f(gl.getUniformLocation(shader, "iResolution"), canvas.width * samplingRate, canvas.height * samplingRate * (9. / 16.));
+
+
+                var givenParameters = demo.sync[syncIndex].givenParams;
+                for (var i = 0; i < givenParameters.length; i++) {
+                    eval("var parameter=demo.sync[syncIndex].param." + givenParameters[i] + ";");
+                    var curValue = parameter;
+                    //console.log(givenParameters[i] +"."+parameter);
+                    if (Object.prototype.toString.call(curValue) === '[object Array]') {
+                        switch (curValue.length) {
+                        case 1:
+                            gl.uniform1f(gl.getUniformLocation(shader, givenParameters[i]), curValue[0]);
+                            break;
+                        case 2:
+                            gl.uniform2f(gl.getUniformLocation(shader, givenParameters[i]), curValue[0], curValue[1]);
+                            break;
+                        case 3:
+                            gl.uniform3f(gl.getUniformLocation(shader, givenParameters[i]), curValue[0], curValue[1], curValue[2]);
+                            break;
+                        case 4:
+                            gl.uniform4f(gl.getUniformLocation(shader, givenParameters[i]), curValue[0], curValue[1], curValue[2], curValue[3]);
+                            break;
+                        }
+                    } else {
+                        gl.uniform1f(gl.getUniformLocation(shader, givenParameters[i]), curValue);
+                    }
+                }
+                gl.viewport(0, 0, canvas.width * samplingRate, canvas.height * samplingRate);
+                // create an empty texture
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * samplingRate, canvas.height * samplingRate * (9. / 16.), 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+                // Create a framebuffer and attach the texture.
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+                fb.width = canvas.width;
+                fb.height = canvas.height;
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+
+                gl.viewport(0, 0, canvas.width * samplingRate, canvas.height * samplingRate * (9. / 16.));
+                // Render to the texture (using clear because it's simple)
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+                
+                gl.bindTexture(gl.TEXTURE_2D, null);
+                gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+                //drawing our post processed scene
+                gl.useProgram(postProgram);
+
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.activeTexture(gl.TEXTURE4);
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.uniform1i(gl.getUniformLocation(postProgram, "scene"), 4);
+                gl.uniform1f(gl.getUniformLocation(postProgram, "iGlobalTime"), time);
+                gl.uniform1f(gl.getUniformLocation(postProgram, "iLocalTime"), time - curEffectSyncTime);
+                gl.uniform2f(gl.getUniformLocation(postProgram, "iResolution"), canvas.width, canvas.height);
+
+                for (var i = 0; i < givenParameters.length; i++) {
+                    eval("var parameter=demo.sync[syncIndex].param." + givenParameters[i] + ";");
+                    var curValue = parameter;
+                    gl.uniform1f(gl.getUniformLocation(postProgram, givenParameters[i]), curValue);
+                }
+
+
+
+                for(var i=0; i<extrasync.sync.length; i++) {
+                    console.log('curBeat ' + curBeat + ' extrasync.sync[i].beat ' + extrasync.sync[i].beat)
+                    if(curBeat >= extrasync.sync[i].beat) {
+                        var postParameters = extrasync.sync[i].givenParams;
+                        console.log(extrasync.sync[i])
+                        for (var a = 0; a < postParameters.length; a++) {
+                            eval("var parameter=extrasync.sync[i].param." + postParameters[a] + ";");
+                            var curValue = parameter;
+                            console.log(curValue);
+                            if(curValue[0]<=curValue[2])
+                                gl.uniform1f(gl.getUniformLocation(postProgram, postParameters[a]), Math.min(curValue[0] + curValue[1]*(time - curEffectSyncTime),curValue[2]));
+                            else if(curValue[0]>=curValue[2])
+                                gl.uniform1f(gl.getUniformLocation(postProgram, postParameters[a]), Math.max(curValue[0] + curValue[1]*(time - curEffectSyncTime),curValue[2]));
+                        }
+                    }
+                }
+
+                var greets = [ 
+                    "mermelz",
+                    "aspekt",
+                    "peisik",
+                    "kewlers",
+                    "mfx",
+                    "gluster",
+                    "pants^2",
+                    "flo",
+                    "byterapers",
+                    "traction",
+                    "pwp",
+                    "atebit",
+                    "dirty minds",
+                    "atebit",
+                    "dekadence",
+                    "nyyrikki",
+                    "trilobit",
+                    "flo",
+                    "mercury",
+                    "fit",
+                    "mehu",
+                    "hackers",
+                    "komplex",
+                    "the old dude", 
+                    "nalleperhe"];
+                if(curBeat>=200 && curBeat<=205)
+                    $('#centteri').html(greets[Math.floor(time*6)%greets.length]);
+                else 
+                    $('#centteri').html('');
+
+                if (vertexScene) {
+                    gl.uniform1f(gl.getUniformLocation(postProgram, "blurpower"), 10.56);
+                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+                } else {
+                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+                }
+
+
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+                gl.activeTexture(gl.TEXTURE2);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+                requestAnimationFrame(run);
+            },
+            onKeyDown = function (pressEvent) {
+                switch (pressEvent.keyCode) {
+                case 37:
+                    audio.currentTime = audio.currentTime - 0.1;
+                    break;
+                case 39:
+                    audio.currentTime = audio.currentTime + 0.1;
+                    break;
+                case 32:
+                    audio.pause();
+                    break;
+                case 13:
+                    audio.play();
+                    break;
+                }
+            },
+            onKeyUp = function (pressEvent) {},
+
+            readyToDemo = function () {
+                for (var i = 0; i < fragmentShadersTxt.length; i++) {
+                    shaderPrograms[i] = gl.createProgram();
+                    compileAndAttachShader(fragmentShadersTxt[i], gl.FRAGMENT_SHADER, shaderPrograms[i]);
+                    compileAndAttachShader(vertexShaderTxt, gl.VERTEX_SHADER, shaderPrograms[i]);
+                    gl.linkProgram(shaderPrograms[i]);
+                    if (!gl.getProgramParameter(shaderPrograms[i],
+                            gl.LINK_STATUS)) {
+                        A("Error in shader " + i);
+                        gl.deleteProgram(shaderPrograms[i]);
+                        return;
+                    }
+                }
+                postProgram = gl.createProgram();
+                compileAndAttachShader(postFragmentShaderTxt, gl.FRAGMENT_SHADER, postProgram);
+                compileAndAttachShader(vertexShaderTxt, gl.VERTEX_SHADER, postProgram);
+                gl.linkProgram(postProgram);
+                if (!gl.getProgramParameter(postProgram,
+                        gl.LINK_STATUS)) {
+                    A("Error in postshader" + ":::" + gl.getShaderInfoLog(postProgram));
+                    gl.deleteProgram(postProgram);
+                    return;
+                }
+
+                $(document).keydown(this.onKeyDown);
+                $(document).keyup(this.onKeyUp);
+
+
+                setInterval(updateJSON, 100);
+                setTimeout(function() {
+                console.log('hä');
+                document.getElementById("vidiu").pause(); 
+                $('#vidiu').remove();
+                audio.play();
+                run();
+                },4000);
+                //Run demo
+            };
+        (function () {
+            startDiv.style.zIndex = "10";
+            startDiv.innerHTML = txt;
+            document.body.appendChild(startDiv);
+            style.background = "#000";
+            style.color = "#fff";
+            style.fontFamily = "Open Sans,sans-serif";
+            style.textAlign = "center";
+            style.fontSize = "2em";
+            style.margin = "0";
+                    canvas = doc.createElement('canvas');
+                    gl = doc.body.appendChild(canvas).getContext('webgl');
+            readyToDemo();
+        })();
+    </script>
+</body>
+
+</html>

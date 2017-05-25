@@ -1,0 +1,42 @@
+{
+	"bpm" : 150.0,
+	"sync" : [
+		{	"beat" : 13, 
+			"givenParams" : ["whitefadespeed", "blackfadespeed", "noicefadespeed", "distrortfadespeed"],
+			"param" : {
+				"whitefadespeed": [0.0, 0.0, 0.0],
+				"blackfadespeed": [0.0, 0.0, 0.0],
+				"noicefadespeed": [0.05, -0.02, 0.0],
+				"distrortfadespeed": [0.0, 0.0, 0.0]
+			}
+		},
+		{	"beat" : 25, 
+			"givenParams" : ["whitefadespeed", "blackfadespeed", "noicefadespeed", "distrortfadespeed"],
+			"param" : {
+				"whitefadespeed": [0.0, 0.0, 0.0],
+				"blackfadespeed": [0.0, 0.0, 0.0],
+				"noicefadespeed": [0.0, 0.0021, 0.1],
+				"distrortfadespeed": [0.0, 0.0021, 0.1]
+			}
+		},
+		{	"beat" : 42,  
+			"givenParams" : ["whitefadespeed", "blackfadespeed", "noicefadespeed", "distrortfadespeed"],
+			"param" : {
+				"whitefadespeed": [0.4, -0.2, 0.0],
+				"blackfadespeed": [0.0, 0.0, 0.0],
+				"noicefadespeed": [0.0, 0.0, 0.0],
+				"distrortfadespeed": [0.0, 0.0, 0.0]
+			}
+		},
+		{	"beat" : 49, 
+			"givenParams" : ["whitefadespeed", "blackfadespeed", "noicefadespeed", "distrortfadespeed"],
+			"param" : {
+				"whitefadespeed": [0.0, 0.0, 0.0],
+				"blackfadespeed": [0.0, 0.0, 0.0],
+				"noicefadespeed": [0.0, 0.0, 0.0],
+				"distrortfadespeed": [0.0, 0.0, 0.0]
+			}
+		}
+	]
+}
+

@@ -1,0 +1,9 @@
+sulje chrome, täysin(varmista tehtävien hallinnasta)
+
+
+aja RUN_DEMO.bat tai disable_web_security_to_run.bat
+jotta demo voidaan ajaa lokaalisti
+
+
+huomaa että chrome kannattaa sammuttaa tämän jälkeen 
+jotta chrome selaimen turvallisuus on taas parempi :)

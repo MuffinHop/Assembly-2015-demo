@@ -1,0 +1,1 @@
+start chrome.exe --args --disable-web-security %~dp0\demo\index.html
